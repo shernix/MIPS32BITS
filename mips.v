@@ -150,23 +150,38 @@ endmodule
 
 //Brnach Mgix Box 
 module BranchMagicBox(output reg [8:0] Qs, input [5:0] opcode, input [15:0] imm16, input[4:0] rs, rt, input Ld, CLK);
-	reg [15:0] temp;
+	// reg [15:0] temp;
 	
-	initial begin
-		Qs= 9'd0;
-	end
+	// initial begin
+	// 	Qs= 9'd0;
+	// end
 
-	always@(posedge CLK)
-	if (Ld && CLK) begin
+	// always@(posedge CLK)
+	// if (Ld && CLK) begin
 
-		temp = imm16 * 16'd4;
-		
-		if (temp > 511) begin
-			Qs= 9'd0;
-		end else begin
-			Qs= temp[8:0];
-		end
-	end
+	// 	temp = imm16 * 16'd4;
+	// 	case (opcode)
+	// 		6'b000100: Qs= temp[8:0];
+
+	// 		6'b000001: 
+	// 			if ((rt == 5'b10001) || (rt == 5'b00001)) begin
+					
+	// 			end else if () begin
+					
+	// 			end
+	// 		6'b000111: 
+	// 		6'b000110: 
+	// 		6'b000101: 
+	// 		default: 
+	// 			Qs= 9'd0;
+
+	// 	endcase
+	// 	if (temp > 511) begin
+	// 		Qs= 9'd0;
+	// 	end else begin
+	// 		Qs= temp[8:0];
+	// 	end
+	// end
 	
 endmodule
 
