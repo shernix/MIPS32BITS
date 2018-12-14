@@ -3,6 +3,7 @@ module MipsProcessor(output [31:0] DataOut, input reset, clock);
 	//ProgramCounter
 	reg [8:0] program_counter = 0;
 	wire [8:0] pcOut;
+	wire [8:0] branchOut;
 
 	//Control Unit Variables
 	wire [22:0] CUOut;
@@ -25,7 +26,7 @@ module MipsProcessor(output [31:0] DataOut, input reset, clock);
 	wire aluOp0 = CUOut[8];
 	wire MDRLd = CUOut[7];
 	wire MAR = CUOut[6];
-	wire pcMux = CUOut[5];
+	wire pcMuxSrc = CUOut[5];
 	wire pcLd = CUOut[4];
 	wire B = CUOut[3];
 	wire IR = CUOut[2];
@@ -116,7 +117,7 @@ module MipsProcessor(output [31:0] DataOut, input reset, clock);
 	assign DataOut = aluResult;
 
 	//Datpath
-	ProgramCounter pc(pcOut, pcLd, clock);
+	ProgramCounter pc(pcOut, branchOut, pcLd, clock);
 	Instruction instruction(instructionOut, ramDataOut, IR, clock);
 	MAR mar(marOut,marMuxOut,MAR, clock);
 	MemAddressMux marMux(marMuxOut, pcOut, aluResult, pcOrMux);
@@ -131,23 +132,24 @@ module MipsProcessor(output [31:0] DataOut, input reset, clock);
 	ALUControl aluCtrl(operation, funct, aluOp2, aluOp1, aluOp0);
 	Alu_32bits alu(aluResult, zflag,C, V, operation, outA, aluSrcBout);
 	ControlUnit cu(CUOut, stateOut, opcode, MOC, reset, clock);
+	BranchMagicBox Branching(branchOut, pcOut, imm16, IR25_21, IR20_16, opcode, B, clock);
 
 	initial begin
     // // out = outW;
-     $display("time        clk       State              PC           MAR                        IR");
-     $monitor("%4d         %b        %b           %b      %d          %b", $time, clock, stateOut, pcOut, marOut, instructionOut) ;
+     $display("time        clk       State              PC           MAR                        IR                        RamOut");
+     $monitor("%4d         %b        %b           %b      %d          %b          %b", $time, clock, stateOut, pcOut, marOut, instructionOut, ramDataOut) ;
   end
 endmodule //end
 
 //PC module
-module ProgramCounter(output reg [8:0] Qs, input Ld, CLK);
+module ProgramCounter(output reg [8:0] Qs, input [8:0] Qd, input Ld, CLK);
 	initial begin
 		Qs= 9'd0;
 	end
 
 	always@(posedge CLK)
 	if (Ld && CLK) begin
-		Qs = Qs + 9'd4;
+		Qs = Qd;
 		// $display("PROGRAM COUNTER = ----------> %b", Qs);
 	end
 	
@@ -156,37 +158,45 @@ endmodule
 // output reg [8:0] Qs, input [5:0] opcode, input [15:0] imm16, input[4:0] rs, rt, input Ld, CLK
 
 //Brnach Mgix Box 
-module BranchMagicBox(output reg [8:0] Qs, input [5:0] opcode, input [15:0] imm16, input[4:0] rs, rt, input Ld, CLK);
-	reg [15:0] temp;
-	
-	initial begin
-		Qs= 9'd0;
-	end
-
-	always@(posedge CLK)
-	if (Ld && CLK) begin
-
-		temp = imm16 * 16'd4;
-		
-		if (temp > 511) begin
-			Qs= 9'd0;
-		end else begin
-			Qs= temp[8:0];
-		end
-	end
-	
+module BranchMagicBox(output reg[8:0] out, input [8:0] PC, input [15:0] imm16, input [4:0] rs, rt, input [5:0] opcode, input B, CLK);
+always @(PC, imm16, B, CLK) 
+	if(CLK && B) begin
+		case(opcode)
+			6'b000100: begin//BEQ
+				if(rs == rt)
+					out[8:0] =  PC+4+imm16*4;
+				else begin 
+					out[8:0] =  PC + 9'd4;
+				end
+			end	
+			6'b000111: begin //BGTZ
+				if(rs>0)
+					out[8:0] =  PC+4+imm16*4;
+				else begin
+					out[8:0] =  PC + 9'd4;
+				end
+			end
+			6'b000110: begin //BLEZ
+				if(rs<0)
+					out[8:0] =  PC+4+imm16*4;
+				else begin 
+					out[8:0] =  PC + 9'd4;
+				end
+			end
+		endcase
+	end	
+	else
+		out[8:0] =  PC + 9'd4;
 endmodule
-
 
 module Instruction(output reg [31:0] Qs, input [31:0] Ds, input Ld, CLK);
 	initial begin
 		Qs= 32'd0;
 	end
 
-	always@(posedge CLK)
+	always@(posedge CLK, Ld)
 		if (Ld && CLK) begin
 			Qs<=Ds;
-			// $display("IR = ----------> %b", Qs);
 		end
 endmodule
 
@@ -196,7 +206,7 @@ module MAR(output reg [8:0] Qs, input [8:0] Ds, input Ld, CLK);
 		Qs = 9'd0;
 	end
 
-	always@(posedge CLK)
+	always@(posedge CLK, Ld)
 		if (Ld) begin
 			Qs <= Ds;
 			//$display("MAR = ----------> %b", Qs);
@@ -251,14 +261,14 @@ module ram512x8 (output reg [31:0] DataOut, output reg MOC, input MOV, MemRead, 
 		MOC = 1;
 	end
 
-	always @(posedge MOV) //Whenever Enable and/or MOV is active
+	always @(posedge MOV, MemRead, MemWrite) begin//Whenever Enable and/or MOV is active
 	if(MOV) //If MOV=1, proceed with ReadWrite
 		begin
 		if(MemRead) //Read Operation (1)
 			begin
 			//DataOut = {Mem[Address], {Mem[Address+1], {Mem[Address+2], Mem[Address+3]}}}; //{Mem[Address], Mem[Address+1], Mem[Address+2], Mem[Address+3]};
 			DataOut = {Mem[Address], Mem[Address+1], Mem[Address+2], Mem[Address+3]};
-			// $display("ramOUT ---------->  %b", DataOut);
+			//$display("ramOUT ---------->  %b", DataOut);
 			MOC = 1'b1;
 			//#2 MOC = 1'b0;
 			end
@@ -274,6 +284,7 @@ module ram512x8 (output reg [31:0] DataOut, output reg MOC, input MOV, MemRead, 
 			MOC = 1'b1;
 			end
 		end
+	end
 endmodule
 
 //DataIn Multiplexer
@@ -625,7 +636,7 @@ module ControlSignalEncoder(output reg [22:0] signals, input [4:0] state);
 	signals[8] = aluOp0
 	signals[7] = MDR
 	signals[6] = MAR
-	signals[5] = pcMux
+	signals[5] = pcMuxSrc
 	signals[4] = pcLd
 	signals[3] = B
 	signals[2] = IR
@@ -637,17 +648,17 @@ module ControlSignalEncoder(output reg [22:0] signals, input [4:0] state);
 		5'b00000: //Estado 0
 			signals = 23'b00000000000000000000000;
 		5'b00001: //Estado 1 Instruction FETCH... MAR and IR activated ---> Load PC to MAR
-			signals = 23'b00000000010000001000110;
+			signals = 23'b00000010010000001000110;
 		5'b00010: //Estado 2 
-			signals = 23'b00000000000000000000110;
+			signals = 23'b00000000010000000000110;
 		5'b00011: //Estado 3 PC + 4
 			signals = 23'b00000000000000001010000;
 		5'b00100: //Estado 4 verificar OPCODE
-			signals = 23'b00000000010000000000010;
+			signals = 23'b00000000010000000000000;
 		5'b00101: //Estado 5 (Logic R-TYPE) ADD, ADDU, SUB, SUBU, SLT, SLTU, AND, OR, NOR, XOR, SLLV, SRAV, SRLV
 			signals = 23'b01000011010000000000000;
 		5'b00110: //Estado 6 ---> ADDI / ADDIU
-			signals = 23'b01000010000100110000000;
+			signals = 23'b01000010001000110000000;
 		5'b00111: //Estado 7 ---> SLTI / SLT
 			signals = 23'b01000010000010000000000;
 		5'b01000: //Estado 8 ---> ANDI
@@ -659,7 +670,7 @@ module ControlSignalEncoder(output reg [22:0] signals, input [4:0] state);
 		5'b01011: //Estado 11 ---> LUI
 			signals = 23'b01000010000000100000000;
 		5'b01100: //Estado 12  ---> BEQ / B / BGEZ / BGEZAL / BGTZ / BNE
-			signals = 23'b01000010000010100000000;
+			signals = 23'b00000010000010100001000;
 		5'b01101: //Estado 13 ---> J / JAL
 			signals = 23'b01000010000011000000000;
 		5'b01110: //Estado 14 ---> LW / LH / LHU / LB / LBU ---> calcular eff-address
