@@ -656,7 +656,7 @@ module ControlSignalEncoder(output reg [22:0] signals, input [4:0] state);
 		5'b01101: //Estado 13 ---> J / JAL
 			signals = 23'b01000010000011000000000;
 		5'b01110: //Estado 14 ---> LW / LH / LHU / LB / LBU ---> calcular eff-address
-			signals = 23'b10000000010001101000000;
+			signals = 23'b10000000000001101000000;
 		5'b01111: //Estado 15 ---> LOAD_INT ---> Tomar eff-address del LOAD y escribir en el Register file el resultado en la direccion RT
 			signals = 23'b01110010010000000000010;
 		5'b10000: //Estado 16 ---> 
@@ -664,9 +664,9 @@ module ControlSignalEncoder(output reg [22:0] signals, input [4:0] state);
 		5'b10001: //Estado 17 ---> 
 			signals = 23'b01110010010000000000010;
 		5'b10010: //Estado 18 ---> SD / SW / SH / SB ---> calcular eff-address
-			signals = 23'b01000001100100000000000;
-		5'b10011: //Estado 19  ---> Tomar eff-address del STORE y escribir en el RAM el valor de RT
-			signals = 23'b10000000000000110000001;
+			signals = 23'b10000000000001101000000;
+		5'b10011: //Estado 19  ---> STORE_INT Tomar eff-address del STORE y escribir en el RAM el valor de RT
+			signals = 23'b0000001001000000000001;
 		5'b10100: //Estado 20 
 			signals = 23'b10000000000000110000001;
 		5'b10101: //Estado 21 
