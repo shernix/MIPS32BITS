@@ -32,6 +32,7 @@ module MipsProcessor(output [31:0] DataOut, input reset, clock);
 	wire ramR = CUOut[1];
 	wire ramW = CUOut[0];
 
+	wire [4:0] stateOut; 
 
 	//////////Register File //////////
 
@@ -129,7 +130,13 @@ module MipsProcessor(output [31:0] DataOut, input reset, clock);
 	Extender signExtender(signExtendOut, imm16);
 	ALUControl aluCtrl(operation, funct, aluOp2, aluOp1, aluOp0);
 	Alu_32bits alu(aluResult, zflag,C, V, operation, outA, aluSrcBout);
-	ControlUnit cu(CUOut, opcode, MOC, reset, clock);
+	ControlUnit cu(CUOut, stateOut, opcode, MOC, reset, clock);
+
+	initial begin
+    // // out = outW;
+     $display("time        clk       State              PC           MAR                        IR");
+     $monitor("%4d         %b        %b           %b      %d          %b", $time, clock, stateOut, pcOut, marOut, instructionOut) ;
+  end
 endmodule //end
 
 //PC module
@@ -150,38 +157,23 @@ endmodule
 
 //Brnach Mgix Box 
 module BranchMagicBox(output reg [8:0] Qs, input [5:0] opcode, input [15:0] imm16, input[4:0] rs, rt, input Ld, CLK);
-	// reg [15:0] temp;
+	reg [15:0] temp;
 	
-	// initial begin
-	// 	Qs= 9'd0;
-	// end
+	initial begin
+		Qs= 9'd0;
+	end
 
-	// always@(posedge CLK)
-	// if (Ld && CLK) begin
+	always@(posedge CLK)
+	if (Ld && CLK) begin
 
-	// 	temp = imm16 * 16'd4;
-	// 	case (opcode)
-	// 		6'b000100: Qs= temp[8:0];
-
-	// 		6'b000001: 
-	// 			if ((rt == 5'b10001) || (rt == 5'b00001)) begin
-					
-	// 			end else if () begin
-					
-	// 			end
-	// 		6'b000111: 
-	// 		6'b000110: 
-	// 		6'b000101: 
-	// 		default: 
-	// 			Qs= 9'd0;
-
-	// 	endcase
-	// 	if (temp > 511) begin
-	// 		Qs= 9'd0;
-	// 	end else begin
-	// 		Qs= temp[8:0];
-	// 	end
-	// end
+		temp = imm16 * 16'd4;
+		
+		if (temp > 511) begin
+			Qs= 9'd0;
+		end else begin
+			Qs= temp[8:0];
+		end
+	end
 	
 endmodule
 
@@ -207,7 +199,7 @@ module MAR(output reg [8:0] Qs, input [8:0] Ds, input Ld, CLK);
 	always@(posedge CLK)
 		if (Ld) begin
 			Qs <= Ds;
-			$display("MAR = ----------> %b", Qs);
+			//$display("MAR = ----------> %b", Qs);
 
 		end
 endmodule
@@ -550,10 +542,10 @@ module Alu_32bits(output reg [31:0] Y,output reg zFlag, C, V, input[5:0] s, inpu
 				end
 			endcase
 			
-			$display("ALUResult: %b", Y);
-			$display("s ----------> %b", s);
-			$display("A ----------> %b", A);
-			$display("B ----------> %b", B);
+			//$display("ALUResult: %b", Y);
+			//$display("s ----------> %b", s);
+			//$display("A ----------> %b", A);
+			//$display("B ----------> %b", B);
 		end
     
 endmodule
@@ -608,7 +600,7 @@ module StateRegister(output reg [4:0] next, input [4:0] prev, input clock, clear
 			state = prev;
 		next = state;
 
-		$display("STATE: %b", state);
+		//$display("STATE: %b", state);
 
 	end
 endmodule
@@ -647,7 +639,7 @@ module ControlSignalEncoder(output reg [22:0] signals, input [4:0] state);
 		5'b00001: //Estado 1 Instruction FETCH... MAR and IR activated ---> Load PC to MAR
 			signals = 23'b00000000010000001000110;
 		5'b00010: //Estado 2 
-			signals = 23'b00000000000000000000100;
+			signals = 23'b00000000000000000000110;
 		5'b00011: //Estado 3 PC + 4
 			signals = 23'b00000000000000001010000;
 		5'b00100: //Estado 4 verificar OPCODE
@@ -655,7 +647,7 @@ module ControlSignalEncoder(output reg [22:0] signals, input [4:0] state);
 		5'b00101: //Estado 5 (Logic R-TYPE) ADD, ADDU, SUB, SUBU, SLT, SLTU, AND, OR, NOR, XOR, SLLV, SRAV, SRLV
 			signals = 23'b01000011010000000000000;
 		5'b00110: //Estado 6 ---> ADDI / ADDIU
-			signals = 23'b01000010000001100000000;
+			signals = 23'b01000010000100110000000;
 		5'b00111: //Estado 7 ---> SLTI / SLT
 			signals = 23'b01000010000010000000000;
 		5'b01000: //Estado 8 ---> ANDI
@@ -706,7 +698,7 @@ module NextStateDecoder(output reg [4:0] next, input [4:0] prev, input [5:0] opc
 	if (reset) begin
 		next = 5'b00000;
 	end else begin
-		$display("OpCode ---------->  %b", opcode);
+		//$display("OpCode ---------->  %b", opcode);
 		//$display("MOC  ---------->  %b", MOC);
 		case(prev)
 			5'b00000: //State 0
@@ -854,249 +846,11 @@ module NextStateDecoder(output reg [4:0] next, input [4:0] prev, input [5:0] opc
 endmodule
 
 // Control Unit
-module ControlUnit(output wire [22:0] signals, input [5:0] opcode, input MOC, reset, clock);
+module ControlUnit(output wire [22:0] signals, output [4:0] state, input [5:0] opcode, input MOC, reset, clock);
 	wire [4:0] state, next;
 	StateRegister SR(state, next, clock, reset);
 	ControlSignalEncoder CSE(signals, state);
 	NextStateDecoder NSD(next, state, opcode, MOC, reset);
 endmodule
 
-module ControlSignalEncoderTest(output reg [18:0] signals, input [4:0] state);
-	/*
-	signals[18] = B1;
-	signals[17] = B0;
-	signals[16] = add;
-	signals[15] = createInstruction
-	signals[14] = IRLd
-	signals[13] = RegDst
-	signals[12] = Jump
-	signals[11] = Branch
-	signals[10] = MemRead
-	signals[9] = MemToReg
-	signals[8] = ALUOp0
-	signals[7] = AlUOp1
-	signals[6] = AlUOp2
-	signals[5] = MemWrite
-	signals[4] = ALUSrc
-	signals[3] = RegWrite
-	signals[2] = MOV
-	signals[1] = MARLd
-	signals[0] = MDRLd
-	*/
-	always@(state)
-	case(state)
-		5'b00000: //Estado 0
-		signals = 19'b0001000001000000000; //11111101111101;
-		5'b00001: //Estado 1
-		signals = 19'b0001000000000010010;
-			5'b00010: //Estado 2
-			signals = 19'b1101000010000010100;
-			5'b00011: //Estado 3
-			signals = 19'b1100100010000010100;
-			5'b00100: //Estado 4
-			signals = 19'b0010000000000000000;
-			5'b00101: //Estado 5 (R-Type)
-			signals = 19'b0001010000010001000;
-			5'b00110: //Estado 6 (ADDI)
-			signals = 19'b0001000000000011000;
-			5'b00111: //Estado 7 (SLTI)
-			signals = 19'b0001000000001011000;
-			5'b01000: //Estado 8 (ANDI)
-			signals = 19'b0001000000101011000;
-			5'b01001: //Estado 9 (ORI)
-			signals = 19'b0001000000011011000;
-			5'b01010: //Estado 10 (XORI)
-			signals = 19'b0001000000111011000;
-			5'b01011: //Estado 11 (LUI)
-			signals = 19'b0001000000110011000;
-			5'b01100: //Estado 12 (Branch 1)
-			signals = 19'b0001000000001000000;
-			5'b01101: //Estado 13 (Jump)
-			signals = 19'b0001001000011000000;
-		5'b01110: //Estado 14 (Load 1)
-		signals = 19'b0000000000000010010;
-		5'b01111: //Estado 15 (Load 2 WORD)
-		signals = 19'b1100000010000010100;
-		5'b10000: //Estado 16 (Load 3 WORD)
-		signals = 19'b1100000010000011100;
-		5'b10001: //Estado 17 (Load 4)
-		signals = 19'b0001000001000001000;
-		5'b10010: //Estado 18 (Store 1)
-		signals = 19'b0000000000000010011;
-		5'b10011: //Estado 19 (Store 2 WORD)
-		signals = 19'b1100000000000100100;
-		5'b10100: //Estado 20 (Store 3 WORD)
-		signals = 19'b1100000000000110101;
-		5'b10101: //Estado 21 (Store 4)
-		signals = 19'b0001000000000000000;
-		5'b10110: //Estado 22 (Branch 2)
-		signals = 19'b0001000000001000000;
-		5'b10111: //Estado 23 (Load 2 BYTE)
-		signals = 19'b0000000010000010100;
-		5'b11000: //Estado 24 (Load 3 BYTE)
-		signals = 19'b0000000010000010100;//0000000010000011100
-		5'b11001: //Estado 25 (Store 2 BYTE)
-		signals = 19'b0000000000000100100;
-		5'b11010: //Estado 26 (Store 3 BYTE)
-		signals = 19'b0000000000000110101;
-		default: //Undefined
-		signals = 19'b1111111111111111111;
-	endcase
-endmodule
-////////////////////////////////////////////////////////////////////////////////////////////
-//Next State Decoder
-////////////////////////////////////////////////////////////////////////////////////////////
-module NextStateDecoderTest(output reg [4:0] next, input [4:0] prev, input [5:0] opcode, input MOC);
-	always@(prev, opcode)
-	case(prev)
-		5'b00000: //State 0
-		next = 5'b00001;
-		5'b00001: //State 1
-		next = 5'b00010;
-		5'b00010: //State 2
-		next = 5'b00011;
-		5'b00011: //State 3
-		if(MOC)
-			next = 5'b00100;
-		else
-			next = 5'b00011;
-		5'b00100: //State 4
-		case(opcode)
-			6'b000000: //Go to State 5
-			next = 5'b00101;
-			6'b001000: //Go to State 6
-			next = 5'b00110;
-			6'b001001: //Go to State 6
-			next = 5'b00110;
-			6'b001010: //Go to State 7
-			next = 5'b00111;
-			6'b001011: //Go to State 7
-			next = 5'b00111;
-			6'b001100: //Go to State 8
-			next = 5'b01000;
-			6'b001101: //Go to State 9
-			next = 5'b01001;
-			6'b001110: //Go to State 10
-			next = 5'b01010;
-			6'b001111: //Go to State 11
-			next = 5'b01011;
-			6'b000100: //Go to State 12
-			next = 5'b01100;
-			6'b000001: //Go to State 12
-			next = 5'b01100;
-			6'b000111: //Go to State 12
-			next = 5'b01100;
-			6'b000110: //Go to State 12
-			next = 5'b01100;
-			6'b000101: //Go to State 12
-			next = 5'b01100;
-			6'b000010: //Go to State 13
-			next = 5'b01101;
-			6'b000011: //Go to State 13
-			next = 5'b01101;
-			6'b100011: //Go to State 14 (LW)
-			next = 5'b01110;
-			6'b100001: //Go to State 14 (LH?)
-			next = 5'b01110;
-			6'b100101: //Go to State 14 (LHU?)
-			next = 5'b01110;
-			6'b100000: //Go to State 14 (LB)
-			next = 5'b01110;
-			6'b100100: //Go to State 14 (LBU)
-			next = 5'b01110;
-			6'b111111: //Go to State 18 (SD?)
-			next = 5'b10010;
-			6'b101011: //Go to State 18 (SW)
-			next = 5'b10010;
-			6'b101001: //Go to State 18 (SH?)
-			next = 5'b10010;
-			6'b101000: //Go to State 18 (SB)
-			next = 5'b10010;
-		endcase
-		5'b00101: //State 5
-		next = 5'b00001;
-		5'b00110: //State 6
-		next = 5'b00001;
-		5'b00111: //State 7
-		next = 5'b00001;
-		5'b01000: //State 8
-		next = 5'b00001;
-		5'b01001: //State 9
-		next = 5'b00001;
-		5'b01010: //State 10
-		next = 5'b00001;
-		5'b01011: //State 11
-		next = 5'b00001;
-		5'b01100: //State 12
-		next = 5'b10110;
-		5'b01101: //State 13
-		next = 5'b00001;
-		5'b01110: //State 14
-		case(opcode)
-			6'b100011: //Go to State 15 (LW)
-			next = 5'b01111;
-			6'b100001: //Go to State 15 (LH?)
-			next = 5'b01111;
-			6'b100101: //Go to State 15 (LHU?)
-			next = 5'b01111;
-			6'b100000: //Go to State 23 (LB)
-			next = 5'b10111;
-			6'b100100: //Go to State 23 (LBU)
-			next = 5'b10111;
-		endcase
-		5'b01111: //State 15 (Load Word)
-		next = 5'b10000;
-		5'b10000: //State 16 (Load Word)
-		if(MOC)
-			next = 5'b10001; //If MOC, go to State 17
-		else
-			next = 5'b10000; //Else, continue waiting for MOC
-		5'b10001: //State 17
-			next = 5'b00001;
-		5'b10010: //State 18
-		case(opcode)
-			6'b111111: //Go to State 19 (SD?)
-			next = 5'b10011;
-			6'b101011: //Go to State 19 (SW)
-			next = 5'b10011;
-			6'b101001: //Go to State 19 (SH?)
-			next = 5'b10011;
-			6'b101000: //Go to State 25 (SB)
-			next = 5'b11001;
-		endcase
-		5'b10011: //State 19 (Store Word)
-			next = 5'b10100;
-		5'b10100: //State 20 (Store Word)
-		if(MOC)
-			next = 5'b10101; //If MOC, go to State 21
-		else
-			next = 5'b10100; //Else, continue waiting for MOC
-		5'b10101: //State 21
-			next = 5'b00001;
-		5'b10110: //State 22
-		next = 5'b00001;
-		5'b10111: //State 23 (Load Byte)
-		next = 5'b11000;
-		5'b11000: //State 24 (Load Byte)
-		if(MOC)
-			next = 5'b10001; //If MOC, go to State 17
-		else
-			next = 5'b11000;
-		5'b11001: //State 25 (Store Byte)
-		next = 5'b11010;
-		5'b11010: //State 26 (Store Byte)
-		if(MOC)
-			next = 5'b10101; //If MOC, go to State 21
-		else
-			next = 5'b11010;
-	endcase
-endmodule
-////////////////////////////////////////////////////////////////////////////////////////////
-// Control Unit
-////////////////////////////////////////////////////////////////////////////////////////////
-module ControlUnitTest(output wire [18:0] signals, input [5:0] opcode, input reset, clock, MOC);
-	wire [4:0] state, next;
-	StateRegister SR(state, next, clock, reset);
-	ControlSignalEncoderTest CSE(signals, state);
-	NextStateDecoderTest NSD(next, state, opcode, MOC);
-endmodule
+
