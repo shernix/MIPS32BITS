@@ -9,9 +9,10 @@ module MipsProcessor(output [31:0] DataOut, input reset, clock);
 	wire [8:0] NextpcOut;
 
 	//Control Unit Variables
-	wire [22:0] CUOut;
+	wire [23:0] CUOut;
 
 	//Control Unit Signals
+	wire NextPCLd = CUOut[23];
 	wire pcOrMux = CUOut[22];
 	wire regW = CUOut[21];
 	wire regIn1 = CUOut[20];
@@ -121,7 +122,7 @@ module MipsProcessor(output [31:0] DataOut, input reset, clock);
 
 	//Datpath
 	ProgramCounter pc(pcOut, NextpcOut, pcLd, clock);
-	NextPC Nextpc(NextpcOut, branchOut, pcLd, clock);
+	NextPC Nextpc(NextpcOut, branchOut, NextPCLd, clock);
 	Instruction instruction(instructionOut, ramDataOut, IR, clock);
 	MAR mar(marOut,marMuxOut,MAR, clock);
 	MemAddressMux marMux(marMuxOut, pcOut, aluResult, pcOrMux);
@@ -136,12 +137,12 @@ module MipsProcessor(output [31:0] DataOut, input reset, clock);
 	ALUControl aluCtrl(operation, funct, aluOp2, aluOp1, aluOp0);
 	Alu_32bits alu(aluResult, zflag,C, V, operation, outA, aluSrcBout);
 	ControlUnit cu(CUOut, stateOut, opcode, MOC, reset, clock);
-	BranchMagicBox Branching(branchOut, pcOut, imm16, IR25_21, IR20_16, opcode, B, clock);
+	BranchMagicBox Branching(branchOut, NextpcOut, imm16, IR25_21, IR20_16, opcode, B);
 
 	initial begin
     // // out = outW;
-     $display("clk State PC MAR                        IR                          RamOut");
-     $monitor(" %b %b %d %d     %b             %b", clock, stateOut, pcOut, marOut, instructionOut, ramDataOut) ;
+     $display("clk State PC    NextPC     MAR                        IR                          RamOut");
+     $monitor(" %b %b %d    %d    %d     %b             %b", clock, stateOut, pcOut, NextpcOut, marOut, instructionOut, ramDataOut) ;
   end
 endmodule //end
 
@@ -161,7 +162,7 @@ endmodule
 
 module NextPC(output reg [8:0] Qs, input [8:0] Qd, input Ld, CLK);
 	initial begin
-		Qs= 9'd0;
+		Qs= 9'd4;
 	end
 
 	always@(posedge CLK)
@@ -175,30 +176,21 @@ endmodule
 // output reg [8:0] Qs, input [5:0] opcode, input [15:0] imm16, input[4:0] rs, rt, input Ld, CLK
 
 //Brnach Mgix Box 
-module BranchMagicBox(output reg[8:0] out, input [8:0] PC, input [15:0] imm16, input [4:0] rs, rt, input [5:0] opcode, input B, CLK);
-always @(PC, imm16, B, rs, rt, opcode, CLK) 
+module BranchMagicBox(output reg[8:0] out, input [8:0] PC, input [15:0] imm16, input [4:0] rs, rt, input [5:0] opcode, input B);
+always @(PC, imm16, B, rs, rt, opcode) 
 	if(B) begin
 		case(opcode)
 			6'b000100: begin//BEQ
 				if(rs == rt)
 					out[8:0] =  PC+4+imm16*4;
-				else begin 
-					out[8:0] =  PC + 9'd4;
-				end
 			end	
 			6'b000111: begin //BGTZ
 				if(rs>0)
 					out[8:0] =  PC+4+imm16*4;
-				else begin
-					out[8:0] =  PC + 9'd4;
-				end
 			end
 			6'b000110: begin //BLEZ
-				if(rs<0)
+				if(rs<=0)
 					out[8:0] =  PC+4+imm16*4;
-				else begin 
-					out[8:0] =  PC + 9'd4;
-				end
 			end
 		endcase
 	end	
@@ -881,8 +873,9 @@ module StateRegister(output reg [4:0] next, input [4:0] prev, input clock, clear
 endmodule
 
 //Control Signal Encoder
-module ControlSignalEncoder(output reg [22:0] signals, input [4:0] state);
+module ControlSignalEncoder(output reg [23:0] signals, input [4:0] state);
 	/*
+	signals[23] = NextPCLd
 	signals[22] = marMux
 	signals[21] = regW
 	signals[20] = regIn1
@@ -910,61 +903,61 @@ module ControlSignalEncoder(output reg [22:0] signals, input [4:0] state);
 	always@(state)
 	case(state)
 		5'b00000: //Estado 0
-			signals = 23'b00000000000000000000000;
+			signals = 24'b000000000000000000000000;
 		5'b00001: //Estado 1 Instruction FETCH... MAR and IR activated ---> Load PC to MAR
-			signals = 23'b00000010010000001000110;
+			signals = 24'b000000010010000001000110;
 		5'b00010: //Estado 2 
-			signals = 23'b00000000010000000000110;
-		5'b00011: //Estado 3 PC + 4
-			signals = 23'b00000000000000001010000;
+			signals = 24'b000000000010000000010110;
+		5'b00011: //Estado 3 NextPC + 4
+			signals = 24'b100000000000000000000000;
 		5'b00100: //Estado 4 verificar OPCODE
-			signals = 23'b00000000010000000000000;
+			signals = 24'b000000000010000000000000;
 		5'b00101: //Estado 5 (Logic R-TYPE) ADD, ADDU, SUB, SUBU, SLT, SLTU, AND, OR, NOR, XOR, SLLV, SRAV, SRLV
-			signals = 23'b01000011010000000000000;
+			signals = 24'b001000011010000000000000;
 		5'b00110: //Estado 6 ---> ADDI / ADDIU
-			signals = 23'b01000010000001100000100;
+			signals = 24'b001000010000001100000100;
 		5'b00111: //Estado 7 ---> SLTI / SLT
-			signals = 23'b01000010000010000000000;
+			signals = 24'b001000010000010000000000;
 		5'b01000: //Estado 8 ---> ANDI
-			signals = 23'b01000010000010100000000;
+			signals = 24'b001000010000010100000000;
 		5'b01001: //Estado 9 ---> ORI
-			signals = 23'b01000010000011000000000;
+			signals = 24'b001000010000011000000000;
 		5'b01010: //Estado 10 ---> XORI
-			signals = 23'b01000010000011100000000;
+			signals = 24'b001000010000011100000000;
 		5'b01011: //Estado 11 ---> LUI
-			signals = 23'b01000010000000100000000;
+			signals = 24'b001000010000000100000000;
 		5'b01100: //Estado 12  ---> BEQ / B / BGEZ / BGEZAL / BGTZ / BNE
-			signals = 23'b00000000000000000011000;
+			signals = 24'b000000000000000001011000;
 		5'b01101: //Estado 13 ---> J / JAL
-			signals = 23'b01000010000011000000000;
+			signals = 24'b001000010000011000000000;
 		5'b01110: //Estado 14 ---> LW / LH / LHU / LB / LBU ---> calcular eff-address
-			signals = 23'b10000000000001101000000;
+			signals = 24'b010000000000001101000000;
 		5'b01111: //Estado 15 ---> LOAD_INT ---> Tomar eff-address del LOAD y escribir en el Register file el resultado en la direccion RT
-			signals = 23'b01110010010000000000010;
+			signals = 24'b001110010010000000000010;
 		5'b10000: //Estado 16 ---> 
-			signals = 23'b01110010010000000000010;
+			signals = 24'b001110010010000000000010;
 		5'b10001: //Estado 17 ---> 
-			signals = 23'b01110010010000000000010;
+			signals = 24'b001110010010000000000010;
 		5'b10010: //Estado 18 ---> SD / SW / SH / SB ---> calcular eff-address
-			signals = 23'b10000000000001101000000;
+			signals = 24'b010000000000001101000000;
 		5'b10011: //Estado 19  ---> STORE_INT Tomar eff-address del STORE y escribir en el RAM el valor de RT
-			signals = 23'b0000001001000000000001;
+			signals = 24'b00000001001000000000001;
 		5'b10100: //Estado 20 
-			signals = 23'b10000000000000110000001;
+			signals = 24'b010000000000000110000001;
 		5'b10101: //Estado 21 
-			signals = 23'b10000000000000110000001;
+			signals = 24'b010000000000000110000001;
 		5'b10110: //Estado 22 
-			signals = 23'b10000000000000110000001;
+			signals = 24'b010000000000000110000001;
 		5'b10111: //Estado 23 
-			signals = 23'b10000000000000110000001;
+			signals = 24'b010000000000000110000001;
 		5'b11000: //Estado 24 
-			signals = 23'b10000000000000110000001;
+			signals = 24'b010000000000000110000001;
 		5'b11001: //Estado 25 
-			signals = 23'b10000000000000110000001;
+			signals = 24'b010000000000000110000001;
 		5'b11010: //Estado 26
-			signals = 23'b10000000000000110000001;
+			signals = 24'b010000000000000110000001;
 		default: //Undefined
-			signals = 23'b00000000000000000000000;
+			signals = 24'b000000000000000000000000;
 	endcase
 endmodule
 
@@ -1121,7 +1114,7 @@ module NextStateDecoder(output reg [4:0] next, input [4:0] prev, input [5:0] opc
 endmodule
 
 // Control Unit
-module ControlUnit(output wire [22:0] signals, output [4:0] state, input [5:0] opcode, input MOC, reset, clock);
+module ControlUnit(output wire [23:0] signals, output [4:0] state, input [5:0] opcode, input MOC, reset, clock);
 	wire [4:0] state, next;
 	StateRegister SR(state, next, clock, reset);
 	ControlSignalEncoder CSE(signals, state);

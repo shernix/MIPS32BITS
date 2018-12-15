@@ -10,7 +10,7 @@ module mipsTester();
 
   initial clk = 0; // initial block executes once during simulation
   always #10 clk = ~clk;
-  initial #5000 $stop;
+  initial #10000 $stop;
 
   MipsProcessor mips(outW, reset, clk);
 
