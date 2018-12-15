@@ -5,6 +5,9 @@ module MipsProcessor(output [31:0] DataOut, input reset, clock);
 	wire [8:0] pcOut;
 	wire [8:0] branchOut;
 
+	//NextPC
+	wire [8:0] NextpcOut;
+
 	//Control Unit Variables
 	wire [22:0] CUOut;
 
@@ -117,7 +120,8 @@ module MipsProcessor(output [31:0] DataOut, input reset, clock);
 	assign DataOut = aluResult;
 
 	//Datpath
-	ProgramCounter pc(pcOut, branchOut, pcLd, clock);
+	ProgramCounter pc(pcOut, NextpcOut, pcLd, clock);
+	NextPC Nextpc(NextpcOut, branchOut, pcLd, clock);
 	Instruction instruction(instructionOut, ramDataOut, IR, clock);
 	MAR mar(marOut,marMuxOut,MAR, clock);
 	MemAddressMux marMux(marMuxOut, pcOut, aluResult, pcOrMux);
