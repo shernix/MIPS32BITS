@@ -136,8 +136,8 @@ module MipsProcessor(output [31:0] DataOut, input reset, clock);
 
 	initial begin
     // // out = outW;
-     $display("time        clk       State              PC           MAR                        IR                        RamOut");
-     $monitor("%4d         %b        %b           %b      %d          %b          %b", $time, clock, stateOut, pcOut, marOut, instructionOut, ramDataOut) ;
+     $display("time        clk       State              PC           MAR                 IR                 RamOut				A					B");
+     $monitor("%b        %b      %b      %d      %b     %b 	%b     %b     %b", $time, clock, stateOut, pcOut, marOut, instructionOut, ramDataOut, regSrcOut, IR20_16, regInOut) ;
   end
 endmodule //end
 
@@ -148,7 +148,7 @@ module ProgramCounter(output reg [8:0] Qs, input [8:0] Qd, input Ld, CLK);
 	end
 
 	always@(posedge CLK)
-	if (Ld && CLK) begin
+	if (Ld) begin
 		Qs = Qd;
 		// $display("PROGRAM COUNTER = ----------> %b", Qs);
 	end
@@ -159,8 +159,8 @@ endmodule
 
 //Brnach Mgix Box 
 module BranchMagicBox(output reg[8:0] out, input [8:0] PC, input [15:0] imm16, input [4:0] rs, rt, input [5:0] opcode, input B, CLK);
-always @(PC, imm16, B, CLK) 
-	if(CLK && B) begin
+always @(PC, imm16, B, rs, rt, opcode) 
+	if(B) begin
 		case(opcode)
 			6'b000100: begin//BEQ
 				if(rs == rt)
@@ -194,8 +194,8 @@ module Instruction(output reg [31:0] Qs, input [31:0] Ds, input Ld, CLK);
 		Qs= 32'd0;
 	end
 
-	always@(posedge CLK, Ld)
-		if (Ld && CLK) begin
+	always@(posedge CLK)
+		if (Ld) begin
 			Qs<=Ds;
 		end
 endmodule
@@ -206,7 +206,7 @@ module MAR(output reg [8:0] Qs, input [8:0] Ds, input Ld, CLK);
 		Qs = 9'd0;
 	end
 
-	always@(posedge CLK, Ld)
+	always@(posedge CLK)
 		if (Ld) begin
 			Qs <= Ds;
 			//$display("MAR = ----------> %b", Qs);
@@ -261,7 +261,7 @@ module ram512x8 (output reg [31:0] DataOut, output reg MOC, input MOV, MemRead, 
 		MOC = 1;
 	end
 
-	always @(posedge MOV, MemRead, MemWrite) begin//Whenever Enable and/or MOV is active
+	always @(MOV, Address, DataIn, MemRead, MemWrite) begin//Whenever Enable and/or MOV is active
 	if(MOV) //If MOV=1, proceed with ReadWrite
 		begin
 		if(MemRead) //Read Operation (1)
@@ -289,7 +289,7 @@ endmodule
 
 //DataIn Multiplexer
 module RegInMux(output reg [31:0] data, input [31:0] aluResult, dataFromRam, input [8:0] program_counter, input [1:0] regIn);
-	always@(regIn)
+	always@(regIn, aluResult, dataFromRam, program_counter)
 	case (regIn)
 		2'b00: data = aluResult;
 		2'b01: data = {23'd0, program_counter} + 32'd8;
@@ -300,11 +300,13 @@ endmodule
 // Register A_Input multiplexer 
 module RegSrcMux(output reg [4:0] data, input [4:0] IR21_25, input [1:0] regSrc);
 	reg LO,HI;
-	always@(regSrc)
+	always@(regSrc, IR21_25)
 	case (regSrc)
-		2'b00: data = IR21_25;
+		2'b00: begin data = IR21_25;
 		// 2'b01: data = LO;
 		// 2'b10: data = HI;
+		$display("rs ----------> %b", data);	
+		end
 	endcase
 endmodule
 
@@ -358,22 +360,23 @@ module RegisterFile(output reg [31:0] OA, OB, input [31:0] dataIn, input [4:0] d
 	registerFile[31] = 32'b00000000000000000000000000000000;	
 	
 	end
+	always@(regAddressA, regAddressB) begin
+		OA = registerFile[regAddressA];
+		OB = registerFile[regAddressB];
+	end
+
 	always@(posedge clock)
 	begin
 	if(write)
 		begin
 		registerFile[destination] = dataIn;
-		if(~destination)
-			registerFile[destination] = 0;
 		end
-	OA = registerFile[regAddressA];
-	OB = registerFile[regAddressB];
 	end
 endmodule
 
 //ALU Source Multiplexer
 module ALUSrcMux(output reg [31:0] data, input [31:0] regData, extended, input [4:0] sa, input [1:0]aluSrc);
-	always@(aluSrc)
+	always@(aluSrc, regData, extended, sa)
 	case (aluSrc)
 		2'b00: data = extended;
 		
@@ -385,11 +388,15 @@ endmodule
 
 //16 to 32 Extender
 module Extender(output reg [31:0] dataOut, input [15:0] dataIn);
-	always@(dataIn) 
+	always@(dataIn) begin
+	//$display("ExtenderDataIn ----------> %b", dataIn);
 	if (dataIn[15])
 		dataOut = {16'b1111111111111111, dataIn}; 
 	else
 		dataOut = {16'b0000000000000000, dataIn}; 
+
+	//$display("ExtenderDataOut ----------> %b", dataOut);
+	end
 endmodule
 
 // ALU
@@ -658,7 +665,7 @@ module ControlSignalEncoder(output reg [22:0] signals, input [4:0] state);
 		5'b00101: //Estado 5 (Logic R-TYPE) ADD, ADDU, SUB, SUBU, SLT, SLTU, AND, OR, NOR, XOR, SLLV, SRAV, SRLV
 			signals = 23'b01000011010000000000000;
 		5'b00110: //Estado 6 ---> ADDI / ADDIU
-			signals = 23'b01000010001000110000000;
+			signals = 23'b01000010001000110000100;
 		5'b00111: //Estado 7 ---> SLTI / SLT
 			signals = 23'b01000010000010000000000;
 		5'b01000: //Estado 8 ---> ANDI
