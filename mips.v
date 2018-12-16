@@ -140,8 +140,8 @@ module MipsProcessor(output [31:0] DataOut, input reset, clock);
 
 	initial begin
     // // out = outW;
-    $display("clk State         PC         NextPC          MAR                IR                            RamOut");
-    $monitor(" %b %b %d    %d    %d  %b       %b    %d   %b", clock, stateOut, pcOut, NextpcOut, marOut, instructionOut, ramDataOut, aluResult, regDstOut) ;
+    $display("clk State       MAR                IR                       AluOut     RegDst     outA   ASelect     outB   BSelect    AluBIn    RegEnable   regDataIn   RamOut");
+    $monitor(" %b %b  %d  %b  %d        %d %d      %d %d       %d  %d    %d  %d   %b", clock, stateOut, marOut, instructionOut, aluResult, regDstOut, outA,regSrcOut, outB, IR20_16, aluSrcBout, regW, regInOut, ramDataOut) ;
   	//$display("State PC   PCLd   nPC   nPCLd MAR   MARLd         A            B         ALUOut");
 	//$monitor("%d   %d     %d   %d     %d   %d     %d   %d   %d   %d", stateOut, pcOut, pcLd, NextpcOut, NextPCLd, marOut, MAR, outA, outB, aluResult) ;
 
@@ -310,7 +310,7 @@ module RegInMux(output reg [31:0] data, input [31:0] aluResult, dataFromRam, inp
 	case (regIn)
 		2'b00: data = aluResult;
 		2'b01: data = {23'd0, program_counter} + 32'd8;
-		2'b10: data = dataFromRam; 
+		2'b10: data = dataFromRam[31:24]; 
 	endcase
 endmodule
 
@@ -662,7 +662,7 @@ module Alu_32bits(output reg [31:0] Y,output reg zFlag, C, V, input[5:0] s, inpu
     integer c = 0; //variable para manejar el conteo de los unos consecutivos.
     integer c2 = 0; //variable para manejar el conteo de los ceros consecutivos.
     integer flag = 0;
-    always@(s,A,B) begin
+    always@(s) begin
 			case(s)
 				6'b100100:
 					begin //bitwise and
@@ -818,9 +818,9 @@ module Alu_32bits(output reg [31:0] Y,output reg zFlag, C, V, input[5:0] s, inpu
 			endcase
 			
 			//$display("ALUResult: %b", Y);
-			//$display("s ----------> %b", s);
-			//$display("A ----------> %b", A);
-			//$display("B ----------> %b", B);
+			//$display("Operation ----------> %b", s);
+			//$display("A ----------> %d", A);
+			//$display("B ----------> %d", B);
 		end
     
 endmodule
@@ -913,7 +913,7 @@ module ControlSignalEncoder(output reg [23:0] signals, input [4:0] state);
 		5'b00000: //Estado 0
 			signals = 24'b000000000000000000000000;
 		5'b00001: //Estado 1 Instruction FETCH... MAR and IR activated ---> Load PC to MAR
-			signals = 24'b000000010010000001000110;
+			signals = 24'b000000010010000001000010;
 		5'b00010: //Estado 2 
 			signals = 24'b000000000010000000010110;
 		5'b00011: //Estado 3 NextPC + 4
@@ -957,9 +957,9 @@ module ControlSignalEncoder(output reg [23:0] signals, input [4:0] state);
 		5'b10110: //Estado 22 
 			signals = 24'b010000000000000110000001;
 		5'b10111: //Estado 23 
-			signals = 24'b010000000000000110000001;
+			signals = 24'b010100000000001101000010;
 		5'b11000: //Estado 24 
-			signals = 24'b010000000000000110000001;
+			signals = 24'b010100000000000110000010;
 		5'b11001: //Estado 25 
 			signals = 24'b010000000000000110000001;
 		5'b11010: //Estado 26
@@ -1029,7 +1029,7 @@ module NextStateDecoder(output reg [4:0] next, input [4:0] prev, input [5:0] opc
 					6'b100101: //Go to State 14 ---> LHU
 						next = 5'b01110;
 					6'b100000: //Go to State 14 ---> LB
-						next = 5'b01110;
+						next = 5'b01111;
 					6'b100100: //Go to State 14 ---> LBU
 						next = 5'b01110;
 					6'b111111: //Go to State 18 ---> SD
@@ -1068,9 +1068,9 @@ module NextStateDecoder(output reg [4:0] next, input [4:0] prev, input [5:0] opc
 					6'b100101: //Go to State 15 (LHU?)
 					next = 5'b01111;
 					6'b100000: //Go to State 23 (LB)
-					next = 5'b11000;
+					next = 5'b01111;
 					6'b100100: //Go to State 23 (LBU)
-					next = 5'b11000;
+					next = 5'b10111;
 				endcase
 			5'b01111: //State 15 (Load Word)
 			next = 5'b10000;
