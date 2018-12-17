@@ -140,10 +140,11 @@ module MipsProcessor(output [31:0] DataOut, input reset, clock);
 
 	initial begin
     // // out = outW;
-    $display("clk State       MAR                IR                       AluOut     RegDst     outA   ASelect     outB   BSelect    AluBIn    RegEnable   regDataIn   RamOut");
-    $monitor(" %b %b  %d  %b  %d        %d %d      %d %d       %d  %d    %d  %d   %b", clock, stateOut, marOut, instructionOut, aluResult, regDstOut, outA,regSrcOut, outB, IR20_16, aluSrcBout, regW, regInOut, ramDataOut) ;
-  	//$display("State PC   PCLd   nPC   nPCLd MAR   MARLd         A            B         ALUOut");
-	//$monitor("%d   %d     %d   %d     %d   %d     %d   %d   %d   %d", stateOut, pcOut, pcLd, NextpcOut, NextPCLd, marOut, MAR, outA, outB, aluResult) ;
+    //$display("clk State       MAR                IR                       AluOut     RegDst     outA   ASelect     outB   BSelect    AluBIn    RegEnable   regDataIn   AluOp");
+    //$monitor(" %b %b  %d  %b  %d        %d %d      %d %d       %d  %d    %d  %d   %b", clock, stateOut, marOut, instructionOut, aluResult, regDstOut, outA,regSrcOut, outB, IR20_16, aluSrcBout, regW, regInOut, funct) ;
+  	
+	$display("State            PC           nPC         MAR             IR  ");
+	$monitor("%b   %d     %d   %d     %b", stateOut, pcOut, NextpcOut, marOut, instructionOut) ;
 
   end
 endmodule //end
@@ -185,17 +186,22 @@ always @(PC, nPC, imm16, B, rs, rt, opcode)  begin
 			6'b000100: begin//BEQ
 				if(rs == rt)
 					out =  PC+imm16*4;
-				$display("BEQ ----------> rs = %d rt = %d ", rs, rt);
+					out = out[8:0];
+				//$display("BEQ ----------> rs = %d rt = %d ", rs, rt);
 			end	
 			6'b000111: begin //BGTZ
-				if(rs>0)
+				if(rs>0) begin
 					out =  PC+imm16*4;
-				$display("BGTZ ----------> rs = %d  out = %d", rs, out[8:0]);
+					out = out[8:0];
+				end else
+					out = out[8:0] - 4;
+				//$display("BGTZ ----------> rs = %d  out = %d", rs, out);
 			end
 			6'b000110: begin //BLEZ
 				if(rs<=0)
 					out =  PC+imm16*4;
-				$display("BLEZ ----------> rs = %d", rs);
+					out = out[8:0];
+				//$display("BLEZ ----------> rs = %d", rs);
 			end
 		endcase
 	end	
@@ -387,6 +393,8 @@ module RegisterFile(output reg [31:0] OA, OB, input [31:0] dataIn, input [4:0] d
 	if(write)
 		begin
 		registerFile[destination] = dataIn;
+		//$display("Data in -----> %d", dataIn);
+		//$display("Destination -----> %d", destination);
 		end
 	end
 endmodule
@@ -714,20 +722,21 @@ module Alu_32bits(output reg [31:0] Y,output reg zFlag, C, V, input[5:0] s, inpu
 
 				6'b100001://Cuenta la cantidad de unos consecuticvos empezando en el bit mas significativo.
 				begin
-						flag=0;
-						c = 0;
-						for(i=31; i>=0; i=i-1)begin
-								if(A[i] == 1'b0)begin
-								flag = 1;
-								i = -1;
-								end
-						if(flag == 0) begin
-								c = c + 1;
+						V = 1'b0;
+						C = 1'b0;
+						{C,Y} = A + B;
+						if(A[31]==1'b0 && B[31]==1'b0 && Y[31]==1)
+								V = 1'b1;
+						else if(A[31]==1'b1 && B[31]==1'b1 && Y[31]==0)
+								V = 1'b1;
+						
+						if (Y == 32'd0) begin
+							zFlag = 1;
+						end else begin
+							zFlag = 0;
 						end
-				end
-				assign Y = c;
+					end
 
-				end
 
 				6'b101011: //"menor que" sin signo
 					begin
@@ -921,7 +930,7 @@ module ControlSignalEncoder(output reg [23:0] signals, input [4:0] state);
 		5'b00100: //Estado 4 verificar OPCODE
 			signals = 24'b000000000010000000000000;
 		5'b00101: //Estado 5 (Logic R-TYPE) ADD, ADDU, SUB, SUBU, SLT, SLTU, AND, OR, NOR, XOR, SLLV, SRAV, SRLV
-			signals = 24'b001000011010000000000000;
+			signals = 24'b001000001101001100000000;
 		5'b00110: //Estado 6 ---> ADDI / ADDIU
 			signals = 24'b001000010000001100000100;
 		5'b00111: //Estado 7 ---> SLTI / SLT
@@ -945,7 +954,7 @@ module ControlSignalEncoder(output reg [23:0] signals, input [4:0] state);
 		5'b10000: //Estado 16 ---> 
 			signals = 24'b001110010010000000000010;
 		5'b10001: //Estado 17 ---> 
-			signals = 24'b001110010010000000000010;
+			signals = 24'b001100010010000000000010;
 		5'b10010: //Estado 18 ---> SD / SW / SH / SB ---> calcular eff-address
 			signals = 24'b010000000000001101000000;
 		5'b10011: //Estado 19  ---> STORE_INT Tomar eff-address del STORE y escribir en el RAM el valor de RT
@@ -957,7 +966,7 @@ module ControlSignalEncoder(output reg [23:0] signals, input [4:0] state);
 		5'b10110: //Estado 22 
 			signals = 24'b010000000000000110000001;
 		5'b10111: //Estado 23 
-			signals = 24'b010100000000001101000010;
+			signals = 24'b010100000010001100000010;
 		5'b11000: //Estado 24 
 			signals = 24'b010100000000000110000010;
 		5'b11001: //Estado 25 
